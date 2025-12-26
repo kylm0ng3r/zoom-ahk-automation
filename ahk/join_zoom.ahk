@@ -4,38 +4,23 @@ SetTitleMatchMode, 2
 SendMode Input
 SetWorkingDir %A_ScriptDir%
 
-; ===============================
-; DPI AWARENESS (CRITICAL)
-; ===============================
 DllCall("SetProcessDPIAware")
 
-; ===============================
-; COORD MODES
-; ===============================
 CoordMode, Pixel, Screen
 CoordMode, Mouse, Screen
 
-; ===============================
-; CONFIG
-; ===============================
 imgDir    := "C:\zoom-images"
 statusDir := "C:\zoom-status"
 
 meetingId := "7582551033"
 passcode  := "Us8ESG"
 
-MAX_RUNTIME_MS := 600000   ; 10 minutes
+MAX_RUNTIME_MS := 600000
 startTime := A_TickCount
 
-; ===============================
-; STATUS INIT
-; ===============================
 FileCreateDir, %statusDir%
 FileAppend, started, %statusDir%\started.txt
 
-; ===============================
-; TIME GUARD
-; ===============================
 CheckTimeout() {
     global startTime, MAX_RUNTIME_MS, statusDir
     if (A_TickCount - startTime > MAX_RUNTIME_MS) {
@@ -46,50 +31,46 @@ CheckTimeout() {
 }
 
 ; ===============================
-; LAUNCH ZOOM EXPLICITLY
+; LAUNCH ZOOM (CORRECT PATH)
 ; ===============================
-if FileExist("C:\Zoom\bin\Zoom.exe") {
-    Run, C:\Zoom\bin\Zoom.exe
-} else if FileExist("C:\Zoom64.exe") {
-    Run, C:\Zoom64.exe
+zoomExe := "C:\Users\azureuser\AppData\Roaming\Zoom\bin\Zoom.exe"
+if FileExist(zoomExe) {
+    Run, %zoomExe%
+} else {
+    FailAndExit("Zoom executable not found")
 }
 
 ; ===============================
-; WAIT FOR ZOOM WINDOW (NON-BLOCKING)
+; WAIT + FORCE ZOOM FOREGROUND
 ; ===============================
-Loop, 120 {   ; wait up to 2 minutes
+Loop, 120 {
     CheckTimeout()
-    if WinExist("Zoom") {
+    if WinExist("ahk_exe Zoom.exe") {
         WinActivate
+        WinWaitActive, ahk_exe Zoom.exe, , 5
+        WinMaximize, ahk_exe Zoom.exe
         break
     }
     Sleep, 1000
 }
 
-Sleep, 2000
+Sleep, 3000
 CheckTimeout()
 
-; =====================================================
+; ===============================
 ; JOIN-FIRST STRATEGY
-; =====================================================
-
-; Try clicking Join directly
+; ===============================
 if (!TryClick(imgDir "\zoom_join_meeting.png")) {
 
-    ; If Join not accessible, clear Done
     TryClick(imgDir "\zoom_done_button.png")
     Sleep, 2000
     CheckTimeout()
 
-    ; Retry Join
     if (!TryClick(imgDir "\zoom_join_meeting.png")) {
         FailAndExit("Could not access Join Meeting screen")
     }
 }
 
-; ===============================
-; MEETING DETAILS
-; ===============================
 ClickImage(imgDir "\zoom_meeting_id_box.png")
 SendInput, %meetingId%
 
@@ -99,24 +80,21 @@ ClickImage(imgDir "\zoom_passcode_box.png")
 SendInput, %passcode%
 
 ClickImage(imgDir "\zoom_join_meeting_button.png")
-ClickImage(imgDir "\zoom_final_join_button.png")
+Sleep, 2000
+TryClick(imgDir "\zoom_final_join_button.png")
 
-; ===============================
-; SUCCESS
-; ===============================
 FileAppend, joined, %statusDir%\joined.txt
 ExitApp
 
-
-; =====================================================
-; CLICK HELPERS
-; =====================================================
+; ===============================
+; HELPERS
+; ===============================
 TryClick(imagePath) {
-    Loop, 5 {
+    Loop, 8 {
         CheckTimeout()
-        ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *50 %imagePath%
+        ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *100 %imagePath%
         if (ErrorLevel = 0) {
-            MouseMove, x + 10, y + 10
+            MouseMove, x+10, y+10
             Click
             Sleep, 1500
             return true
@@ -127,11 +105,11 @@ TryClick(imagePath) {
 }
 
 ClickImage(imagePath) {
-    Loop, 30 {
+    Loop, 40 {
         CheckTimeout()
-        ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *50 %imagePath%
+        ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *100 %imagePath%
         if (ErrorLevel = 0) {
-            MouseMove, x + 10, y + 10
+            MouseMove, x+10, y+10
             Click
             Sleep, 1500
             return
@@ -148,23 +126,14 @@ FailAndExit(reason) {
     ExitApp
 }
 
-; =====================================================
-; BLOCKING SCREENSHOT (FIXED)
-; =====================================================
 TakeScreenshot() {
     global statusDir
     FormatTime, ts,, yyyyMMdd-HHmmss
-
-    ps :=
-    (LTrim
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-    $bmp.Save('C:\zoom-status\fail-%ts%.png')
-    )
-
-    RunWait, powershell -NoProfile -Command "%ps%"
+    RunWait, powershell -NoProfile -Command ^
+    "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; `
+    $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; `
+    $bmp=New-Object Drawing.Bitmap $b.Width,$b.Height; `
+    $g=[Drawing.Graphics]::FromImage($bmp); `
+    $g.CopyFromScreen($b.Location,[Drawing.Point]::Empty,$b.Size); `
+    $bmp.Save('C:\zoom-status\fail-%ts%.png')"
 }
