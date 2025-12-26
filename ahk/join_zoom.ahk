@@ -73,15 +73,15 @@ CheckTimeout()
 ; JOIN-FIRST STRATEGY
 ; =====================================================
 
-; --- Attempt Join directly ---
+; Try clicking Join directly
 if (!TryClick(imgDir "\zoom_join_meeting.png")) {
 
-    ; --- If Join not clickable, clear Done ---
+    ; If Join not accessible, clear Done
     TryClick(imgDir "\zoom_done_button.png")
     Sleep, 2000
     CheckTimeout()
 
-    ; --- Retry Join ---
+    ; Retry Join
     if (!TryClick(imgDir "\zoom_join_meeting.png")) {
         FailAndExit("Could not access Join Meeting screen")
     }
@@ -111,7 +111,6 @@ ExitApp
 ; =====================================================
 ; CLICK HELPERS
 ; =====================================================
-
 TryClick(imagePath) {
     Loop, 5 {
         CheckTimeout()
@@ -150,10 +149,22 @@ FailAndExit(reason) {
 }
 
 ; =====================================================
-; SCREENSHOT
+; BLOCKING SCREENSHOT (FIXED)
 ; =====================================================
 TakeScreenshot() {
     global statusDir
     FormatTime, ts,, yyyyMMdd-HHmmss
-    Run, powershell -command "Add-Type -AssemblyName System.Windows.Forms;Add-Type -AssemblyName System.Drawing;$bmp=New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height);$g=[System.Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen(0,0,0,0,$bmp.Size);$bmp.Save('%statusDir%\fail-%ts%.png')"
+
+    ps :=
+    (LTrim
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+    $bmp.Save('C:\zoom-status\fail-%ts%.png')
+    )
+
+    RunWait, powershell -NoProfile -Command "%ps%"
 }
