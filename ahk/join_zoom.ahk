@@ -5,7 +5,7 @@ SendMode Input
 SetWorkingDir %A_ScriptDir%
 
 ; ===============================
-; DPI AWARENESS
+; DPI AWARENESS (CRITICAL)
 ; ===============================
 DllCall("SetProcessDPIAware")
 
@@ -24,7 +24,7 @@ statusDir := "C:\zoom-status"
 meetingId := "7582551033"
 passcode  := "Us8ESG"
 
-MAX_RUNTIME_MS := 600000   ; 10 minutes hard limit
+MAX_RUNTIME_MS := 600000   ; 10 minutes
 startTime := A_TickCount
 
 ; ===============================
@@ -34,7 +34,7 @@ FileCreateDir, %statusDir%
 FileAppend, started, %statusDir%\started.txt
 
 ; ===============================
-; HARD TIME GUARD
+; TIME GUARD
 ; ===============================
 CheckTimeout() {
     global startTime, MAX_RUNTIME_MS, statusDir
@@ -46,25 +46,50 @@ CheckTimeout() {
 }
 
 ; ===============================
-; WAIT FOR ZOOM INIT
+; LAUNCH ZOOM EXPLICITLY
 ; ===============================
-Sleep, 120000   ; 2 minutes
-CheckTimeout()
+if FileExist("C:\Zoom\bin\Zoom.exe") {
+    Run, C:\Zoom\bin\Zoom.exe
+} else if FileExist("C:\Zoom64.exe") {
+    Run, C:\Zoom64.exe
+}
 
 ; ===============================
-; ACTIVATE ZOOM
+; WAIT FOR ZOOM WINDOW (NON-BLOCKING)
 ; ===============================
-WinActivate, Zoom Workplace
-WinWaitActive, Zoom Workplace, , 30
+Loop, 120 {   ; wait up to 2 minutes
+    CheckTimeout()
+    if WinExist("Zoom") {
+        WinActivate
+        break
+    }
+    Sleep, 1000
+}
+
 Sleep, 2000
 CheckTimeout()
 
-; ===============================
-; JOIN FLOW
-; ===============================
-ClickImage(imgDir "\zoom_done_button.png")
-ClickImage(imgDir "\zoom_join_meeting.png")
+; =====================================================
+; JOIN-FIRST STRATEGY
+; =====================================================
 
+; --- Attempt Join directly ---
+if (!TryClick(imgDir "\zoom_join_meeting.png")) {
+
+    ; --- If Join not clickable, clear Done ---
+    TryClick(imgDir "\zoom_done_button.png")
+    Sleep, 2000
+    CheckTimeout()
+
+    ; --- Retry Join ---
+    if (!TryClick(imgDir "\zoom_join_meeting.png")) {
+        FailAndExit("Could not access Join Meeting screen")
+    }
+}
+
+; ===============================
+; MEETING DETAILS
+; ===============================
 ClickImage(imgDir "\zoom_meeting_id_box.png")
 SendInput, %meetingId%
 
@@ -84,12 +109,27 @@ ExitApp
 
 
 ; =====================================================
-; IMAGE CLICK WITH TIME GUARD
+; CLICK HELPERS
 ; =====================================================
+
+TryClick(imagePath) {
+    Loop, 5 {
+        CheckTimeout()
+        ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *50 %imagePath%
+        if (ErrorLevel = 0) {
+            MouseMove, x + 10, y + 10
+            Click
+            Sleep, 1500
+            return true
+        }
+        Sleep, 1000
+    }
+    return false
+}
+
 ClickImage(imagePath) {
     Loop, 30 {
         CheckTimeout()
-
         ImageSearch, x, y, 0, 0, A_ScreenWidth, A_ScreenHeight, *50 %imagePath%
         if (ErrorLevel = 0) {
             MouseMove, x + 10, y + 10
@@ -99,15 +139,18 @@ ClickImage(imagePath) {
         }
         Sleep, 1000
     }
+    FailAndExit("Image not found: " imagePath)
+}
 
-    ; ---------- IMAGE FAILURE ----------
-    FileAppend, failed, %statusDir%\failed.txt
+FailAndExit(reason) {
+    global statusDir
+    FileAppend, failed`n%reason%, %statusDir%\failed.txt
     TakeScreenshot()
     ExitApp
 }
 
 ; =====================================================
-; SCREENSHOT FUNCTION
+; SCREENSHOT
 ; =====================================================
 TakeScreenshot() {
     global statusDir
